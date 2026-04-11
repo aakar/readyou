@@ -178,10 +178,11 @@ constructor(
 
     /**
      * Feedly sync strategy:
-     * 1. Fetch collections (categories/folders) and upsert groups
-     * 2. Fetch subscriptions and upsert feeds
-     * 3. Fetch stream contents for global.all since last sync, paginating with continuation tokens
-     * 4. Insert new articles; read/starred status comes directly from each stream item
+     * 1. Fetch collections + subscriptions; build the complete group set (including any
+     *    built-in categories like global.uncategorized that are not in /v3/collections)
+     * 2. Upsert groups, then upsert feeds — order matters for FK constraints
+     * 3. Paginate stream contents for global.all since last sync
+     * 4. Insert articles whose feed exists in the DB; read/starred from stream item fields
      * 5. Remove orphaned groups and feeds
      */
     override suspend fun sync(
@@ -192,7 +193,8 @@ constructor(
         try {
             val preTime = System.currentTimeMillis()
             val preDate = Date(preTime)
-            val account = accountService.getAccountById(accountId)!!
+            // Use var so we can keep the account object up-to-date if userId is fetched here
+            var account = accountService.getAccountById(accountId)!!
             check(account.type.id == AccountType.Feedly.id) { "account type is invalid" }
 
             val key = FeedlySecurityKey(account.securityKey)
@@ -201,60 +203,74 @@ constructor(
             val userId = key.userId ?: run {
                 val profile = FeedlyAPI.getInstance(context, accessToken).getProfile()
                 val id = profile.id ?: throw FeedlyAPIException("Unable to retrieve user ID")
-                accountService.update(
-                    account.copy(
-                        securityKey = FeedlySecurityKey(accessToken, id).toString()
-                    )
-                )
+                account = account.copy(securityKey = FeedlySecurityKey(accessToken, id).toString())
+                accountService.update(account)
                 id
             }
             val feedlyAPI = FeedlyAPI.getInstance(context, accessToken)
 
-            // 1. Fetch collections (categories/folders)
+            // 1. Fetch both collections and subscriptions up front
             val collections = feedlyAPI.getCollections()
-            val remoteGroupIds = mutableSetOf<String>()
+            val subscriptions = feedlyAPI.getSubscriptions()
 
-            val groups =
-                collections.mapNotNull { collection ->
-                    val id = collection.id ?: return@mapNotNull null
-                    remoteGroupIds.add(accountId.spacerDollar(id))
+            // Build a complete set of category IDs: collections provide labels;
+            // subscriptions may reference built-in categories (e.g. global.uncategorized)
+            // that are not in /v3/collections — those would violate the Feed→Group FK if missed.
+            val collectionIds = collections.mapNotNull { it.id }.toSet()
+            val allCategoryIds = subscriptions
+                .flatMap { it.categories.orEmpty() }
+                .mapNotNull { it.id }
+                .toSet()
+
+            val remoteGroupIds = mutableSetOf<String>()
+            val groups = mutableListOf<Group>()
+
+            collections.forEach { collection ->
+                val id = collection.id ?: return@forEach
+                remoteGroupIds.add(accountId.spacerDollar(id))
+                groups.add(
                     Group(
                         id = accountId.spacerDollar(id),
                         name = collection.label ?: context.getString(R.string.empty),
                         accountId = accountId,
                     )
+                )
+            }
+
+            // Create a group for any subscription category not covered by collections
+            allCategoryIds.filterNot { it in collectionIds }.forEach { categoryId ->
+                val label = when {
+                    categoryId.endsWith("global.uncategorized") ->
+                        context.getString(R.string.all)
+                    else -> categoryId.substringAfterLast("/")
                 }
+                val dbId = accountId.spacerDollar(categoryId)
+                remoteGroupIds.add(dbId)
+                groups.add(Group(id = dbId, name = label, accountId = accountId))
+            }
+
+            // Groups must exist before feeds are inserted (FK constraint)
             groupDao.insertOrUpdate(groups)
 
-            // 2. Fetch subscriptions (feeds) and assign to groups
-            val subscriptions = feedlyAPI.getSubscriptions()
+            // 2. Build feeds — every subscription category now has a matching group in DB
             val remoteFeedIds = mutableSetOf<String>()
-
-            val feeds =
-                subscriptions.mapNotNull { subscription ->
-                    val feedId = subscription.id ?: return@mapNotNull null
-                    val firstCategoryId = subscription.categories?.firstOrNull()?.id
-                    val groupDbId =
-                        if (firstCategoryId != null) {
-                            accountId.spacerDollar(firstCategoryId)
-                        } else {
-                            // If no category, skip — feed must be in a group
-                            return@mapNotNull null
-                        }
-                    remoteFeedIds.add(accountId.spacerDollar(feedId))
-                    Feed(
-                        id = accountId.spacerDollar(feedId),
-                        name = subscription.title?.decodeHTML()
-                            ?: context.getString(R.string.empty),
-                        url = feedId.removePrefix("feed/"),
-                        groupId = groupDbId,
-                        accountId = accountId,
-                        icon = subscription.iconUrl,
-                    )
-                }
+            val feeds = subscriptions.mapNotNull { subscription ->
+                val subId = subscription.id ?: return@mapNotNull null
+                val firstCategoryId =
+                    subscription.categories?.firstOrNull()?.id ?: return@mapNotNull null
+                remoteFeedIds.add(accountId.spacerDollar(subId))
+                Feed(
+                    id = accountId.spacerDollar(subId),
+                    name = subscription.title?.decodeHTML()
+                        ?: context.getString(R.string.empty),
+                    url = subId.removePrefix("feed/"),
+                    groupId = accountId.spacerDollar(firstCategoryId),
+                    accountId = accountId,
+                    icon = subscription.iconUrl,
+                )
+            }
             feedDao.insertOrUpdate(feeds)
 
-            // Handle feeds with no icon
             val noIconFeeds = feedDao.queryNoIcon(accountId)
             feedDao.update(
                 *noIconFeeds
@@ -262,15 +278,16 @@ constructor(
                     .toTypedArray()
             )
 
-            // 3. Fetch stream contents for all articles since last sync
+            // 3. Paginate stream contents for all articles since last sync
             val allStreamId = "user/$userId/category/global.all"
             val newerThan = account.updateAt?.time
 
             val allArticles = mutableListOf<Article>()
             var continuation: String? = null
+            var batchCount = 0
             val maxBatches = 40
 
-            repeat(maxBatches) { _ ->
+            while (batchCount < maxBatches) {
                 val streamContents =
                     feedlyAPI.getStreamContents(
                         streamId = allStreamId,
@@ -280,13 +297,13 @@ constructor(
                     )
 
                 val items = streamContents.items
-                if (items.isNullOrEmpty()) {
-                    return@repeat
-                }
+                if (items.isNullOrEmpty()) break
 
                 items.forEach { item ->
                     val entryId = item.id ?: return@forEach
                     val feedIdRaw = item.origin?.feedId ?: return@forEach
+                    // Skip articles whose feed wasn't in our subscription list
+                    if (accountId.spacerDollar(feedIdRaw) !in remoteFeedIds) return@forEach
                     val link =
                         item.canonical?.firstOrNull()?.href
                             ?: item.alternate?.firstOrNull()?.href
@@ -323,8 +340,8 @@ constructor(
                     )
                 }
 
-                continuation = streamContents.continuation
-                if (continuation == null) return@repeat
+                continuation = streamContents.continuation ?: break
+                batchCount++
             }
 
             if (allArticles.isNotEmpty()) {
@@ -341,17 +358,14 @@ constructor(
 
             // 5. Remove orphaned groups and feeds
             groupDao.queryAll(accountId).forEach {
-                if (!remoteGroupIds.contains(it.id)) {
-                    super.deleteGroup(it, true)
-                }
+                if (it.id !in remoteGroupIds) super.deleteGroup(it, true)
             }
             feedDao.queryAll(accountId).forEach {
-                if (!remoteFeedIds.contains(it.id)) {
-                    super.deleteFeed(it, true)
-                }
+                if (it.id !in remoteFeedIds) super.deleteFeed(it, true)
             }
 
-            Log.i(TAG, "sync completed in ${System.currentTimeMillis() - preTime}ms")
+            Log.i(TAG, "sync completed in ${System.currentTimeMillis() - preTime}ms, " +
+                    "${allArticles.size} articles inserted")
             accountService.update(account.copy(updateAt = preDate))
             ListenableWorker.Result.success()
         } catch (e: Exception) {
