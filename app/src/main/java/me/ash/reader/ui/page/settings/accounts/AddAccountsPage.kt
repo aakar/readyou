@@ -64,17 +64,18 @@ fun AddAccountsPage(
                     ) {}
                     Spacer(modifier = Modifier.height(24.dp))
                 }
-/*                item {
+                item {
                     Subtitle(
                         modifier = Modifier.padding(horizontal = 24.dp),
                         text = stringResource(R.string.services),
                     )
                     SettingItem(
-                        enabled = false,
                         title = stringResource(R.string.feedly),
                         desc = stringResource(R.string.feedly_desc),
                         iconPainter = painterResource(id = R.drawable.ic_feedly),
-                        onClick = {},
+                        onClick = {
+                            additionViewModel.showAddFeedlyAccountDialog()
+                        },
                     ) {}
                     SettingItem(
                         enabled = false,
@@ -84,7 +85,7 @@ fun AddAccountsPage(
                         onClick = {},
                     ) {}
                     Spacer(modifier = Modifier.height(24.dp))
-                }*/
+                }
                 item {
                     Subtitle(
                         modifier = Modifier.padding(horizontal = 24.dp),
@@ -128,6 +129,7 @@ fun AddAccountsPage(
     AddFeverAccountDialog(onBack, navigateToAccountDetails)
     AddGoogleReaderAccountDialog(onBack, navigateToAccountDetails)
     AddFreshRSSAccountDialog(onBack, navigateToAccountDetails)
+    AddFeedlyAccountDialog(onBack, navigateToAccountDetails)
 }
 
 @Preview
