@@ -77,8 +77,8 @@ constructor(
             )
         }
 
-    override suspend fun validCredentials(account: Account): Boolean =
-        try {
+    override suspend fun validCredentials(account: Account): Boolean {
+        return try {
             val key = FeedlySecurityKey(account.securityKey)
             if (key.accessToken.isNullOrBlank()) return false
             val api = FeedlyAPI.getInstance(context, key.accessToken!!)
@@ -92,6 +92,7 @@ constructor(
             Log.e(TAG, "validCredentials failed: ${e.message}", e)
             false
         }
+    }
 
     override suspend fun clearAuthorization() {
         FeedlyAPI.clearInstance()
