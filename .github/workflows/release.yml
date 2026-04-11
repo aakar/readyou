@@ -22,8 +22,14 @@ jobs:
       - name: Build APK
         run: gradle assembleGithubRelease
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/github/release/*.apk
-          generate_release_notes: true
+      - name: List APK outputs
+        run: find app/build/outputs/apk -name "*.apk"
+
+      - name: Create GitHub Release with APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            app/build/outputs/apk/github/release/*.apk \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
