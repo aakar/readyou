@@ -288,10 +288,13 @@ constructor(
                     .toTypedArray()
             )
 
-            // 3. Paginate stream contents for all articles since last sync
+            // 3. Paginate stream contents for all articles since last sync.
+            // If the DB has no articles at all (e.g. previous syncs failed silently and left
+            // updateAt set to a stale timestamp), ignore newerThan and fetch everything.
             val allStreamId = "user/$userId/category/global.all"
-            val newerThan = account.updateAt?.time
-            Log.i(TAG, "fetching stream $allStreamId newerThan=$newerThan")
+            val hasExistingArticles = articleDao.hasArticles(accountId)
+            val newerThan = if (hasExistingArticles) account.updateAt?.time else null
+            Log.i(TAG, "fetching stream $allStreamId newerThan=$newerThan hasExistingArticles=$hasExistingArticles")
 
             val allArticles = mutableListOf<Article>()
             var continuation: String? = null
@@ -321,7 +324,8 @@ constructor(
                         return@forEach
                     }
                     val link =
-                        item.canonical?.firstOrNull()?.href
+                        item.canonicalUrl
+                            ?: item.canonical?.firstOrNull()?.href
                             ?: item.alternate?.firstOrNull()?.href
                             ?: ""
                     val content = item.content?.content ?: item.summary?.content ?: ""
@@ -390,7 +394,12 @@ constructor(
 
             Log.i(TAG, "sync completed in ${System.currentTimeMillis() - preTime}ms, " +
                     "${allArticles.size} articles inserted")
-            accountService.update(account.copy(updateAt = preDate))
+            // Only advance updateAt when we actually inserted articles. If 0 articles came back
+            // (e.g. a bug filtered everything), keeping the old updateAt means the next sync
+            // retries from the same window rather than silently skipping everything forever.
+            if (allArticles.isNotEmpty()) {
+                accountService.update(account.copy(updateAt = preDate))
+            }
             ListenableWorker.Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "sync failed: ${e.message}", e)

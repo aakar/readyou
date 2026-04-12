@@ -66,6 +66,9 @@ object FeedlyDTO {
         val unread: Boolean?,
         val summary: Content?,
         val content: Content?,
+        // Feedly returns the canonical URL as a plain string "canonicalUrl", not an array.
+        // The "canonical" array field exists in some older responses; fall back to "alternate".
+        val canonicalUrl: String?,
         val canonical: List<Link>?,
         val alternate: List<Link>?,
         val origin: Origin?,

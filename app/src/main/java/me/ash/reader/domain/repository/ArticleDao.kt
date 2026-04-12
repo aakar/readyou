@@ -899,6 +899,9 @@ interface ArticleDao {
     @Insert
     suspend fun insertList(articles: List<Article>)
 
+    @Query("SELECT COUNT(*) > 0 FROM article WHERE accountId = :accountId LIMIT 1")
+    suspend fun hasArticles(accountId: Int): Boolean
+
     @Delete
     suspend fun delete(vararg article: Article)
 
