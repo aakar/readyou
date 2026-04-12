@@ -52,7 +52,7 @@ object FeedlyDTO {
     )
 
     data class Origin(
-        val feedId: String?,
+        val streamId: String?,   // Feedly API field is "streamId", not "feedId"
         val title: String?,
         val htmlUrl: String?,
     )

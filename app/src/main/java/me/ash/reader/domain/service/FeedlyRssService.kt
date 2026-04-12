@@ -314,7 +314,7 @@ constructor(
                 var skipped = 0
                 items.forEach { item ->
                     val entryId = item.id ?: return@forEach
-                    val feedIdRaw = item.origin?.feedId ?: return@forEach
+                    val feedIdRaw = item.origin?.streamId ?: return@forEach
                     // Skip articles whose feed wasn't in our subscription list
                     if (accountId.spacerDollar(feedIdRaw) !in remoteFeedIds) {
                         skipped++

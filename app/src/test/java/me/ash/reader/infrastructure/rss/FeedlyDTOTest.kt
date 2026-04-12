@@ -189,7 +189,7 @@ class FeedlyDTOTest {
               "canonical": [{"href": "https://example.com/article", "type": "text/html"}],
               "alternate": [{"href": "https://example.com/alt", "type": "text/html"}],
               "origin": {
-                "feedId": "feed/http://feeds.example.com/rss",
+                "streamId": "feed/http://feeds.example.com/rss",
                 "title": "Example Blog",
                 "htmlUrl": "https://example.com"
               },
@@ -213,7 +213,7 @@ class FeedlyDTOTest {
         assertEquals("<p>Full article content</p>", item.content?.content)
         assertEquals("https://example.com/article", item.canonical?.first()?.href)
         assertEquals("https://example.com/alt", item.alternate?.first()?.href)
-        assertEquals("feed/http://feeds.example.com/rss", item.origin?.feedId)
+        assertEquals("feed/http://feeds.example.com/rss", item.origin?.streamId)
         assertEquals("https://example.com", item.origin?.htmlUrl)
         assertEquals(1, item.tags?.size)
         assertEquals("user/c805fcbf/tag/global.saved", item.tags?.first()?.id)
