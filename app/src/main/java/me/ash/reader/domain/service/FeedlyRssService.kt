@@ -201,17 +201,21 @@ constructor(
             val accessToken =
                 key.accessToken ?: throw FeedlyAPIException("Access token is not set")
             val userId = key.userId ?: run {
+                Log.i(TAG, "userId not cached, fetching from profile")
                 val profile = FeedlyAPI.getInstance(context, accessToken).getProfile()
                 val id = profile.id ?: throw FeedlyAPIException("Unable to retrieve user ID")
                 account = account.copy(securityKey = FeedlySecurityKey(accessToken, id).toString())
                 accountService.update(account)
                 id
             }
+            Log.i(TAG, "sync start — accountId=$accountId userId=$userId newerThan=${account.updateAt}")
             val feedlyAPI = FeedlyAPI.getInstance(context, accessToken)
 
             // 1. Fetch both collections and subscriptions up front
             val collections = feedlyAPI.getCollections()
+            Log.i(TAG, "collections fetched: ${collections.size}")
             val subscriptions = feedlyAPI.getSubscriptions()
+            Log.i(TAG, "subscriptions fetched: ${subscriptions.size}")
 
             // Build a complete set of category IDs: collections provide labels;
             // subscriptions may reference built-in categories (e.g. global.uncategorized)
@@ -247,8 +251,10 @@ constructor(
                 val dbId = accountId.spacerDollar(categoryId)
                 remoteGroupIds.add(dbId)
                 groups.add(Group(id = dbId, name = label, accountId = accountId))
+                Log.i(TAG, "synthetic group for built-in category: $categoryId label=$label")
             }
 
+            Log.i(TAG, "upserting ${groups.size} groups")
             // Groups must exist before feeds are inserted (FK constraint)
             groupDao.insertOrUpdate(groups)
 
@@ -257,7 +263,10 @@ constructor(
             val feeds = subscriptions.mapNotNull { subscription ->
                 val subId = subscription.id ?: return@mapNotNull null
                 val firstCategoryId =
-                    subscription.categories?.firstOrNull()?.id ?: return@mapNotNull null
+                    subscription.categories?.firstOrNull()?.id ?: run {
+                        Log.w(TAG, "subscription $subId has no category — skipping")
+                        return@mapNotNull null
+                    }
                 remoteFeedIds.add(accountId.spacerDollar(subId))
                 Feed(
                     id = accountId.spacerDollar(subId),
@@ -269,6 +278,7 @@ constructor(
                     icon = subscription.iconUrl,
                 )
             }
+            Log.i(TAG, "upserting ${feeds.size} feeds (remoteFeedIds=${remoteFeedIds.size})")
             feedDao.insertOrUpdate(feeds)
 
             val noIconFeeds = feedDao.queryNoIcon(accountId)
@@ -281,6 +291,7 @@ constructor(
             // 3. Paginate stream contents for all articles since last sync
             val allStreamId = "user/$userId/category/global.all"
             val newerThan = account.updateAt?.time
+            Log.i(TAG, "fetching stream $allStreamId newerThan=$newerThan")
 
             val allArticles = mutableListOf<Article>()
             var continuation: String? = null
@@ -297,13 +308,18 @@ constructor(
                     )
 
                 val items = streamContents.items
+                Log.i(TAG, "batch $batchCount: ${items?.size ?: 0} items, continuation=${streamContents.continuation?.take(20)}")
                 if (items.isNullOrEmpty()) break
 
+                var skipped = 0
                 items.forEach { item ->
                     val entryId = item.id ?: return@forEach
                     val feedIdRaw = item.origin?.feedId ?: return@forEach
                     // Skip articles whose feed wasn't in our subscription list
-                    if (accountId.spacerDollar(feedIdRaw) !in remoteFeedIds) return@forEach
+                    if (accountId.spacerDollar(feedIdRaw) !in remoteFeedIds) {
+                        skipped++
+                        return@forEach
+                    }
                     val link =
                         item.canonical?.firstOrNull()?.href
                             ?: item.alternate?.firstOrNull()?.href
@@ -339,10 +355,13 @@ constructor(
                         )
                     )
                 }
+                if (skipped > 0) Log.w(TAG, "batch $batchCount: skipped $skipped items (feed not in subscription list)")
 
                 continuation = streamContents.continuation ?: break
                 batchCount++
             }
+
+            Log.i(TAG, "stream fetch done: ${allArticles.size} articles across $batchCount batches")
 
             if (allArticles.isNotEmpty()) {
                 articleDao.insert(*allArticles.toTypedArray())
@@ -356,12 +375,17 @@ constructor(
                     .forEach { (feed, articles) -> notificationHelper.notify(feed, articles) }
             }
 
-            // 5. Remove orphaned groups and feeds
-            groupDao.queryAll(accountId).forEach {
-                if (it.id !in remoteGroupIds) super.deleteGroup(it, true)
+            // 5. Remove orphaned groups and feeds (only if remote lists are non-empty,
+            //    to avoid accidentally wiping everything if an API call returned nothing)
+            if (remoteGroupIds.isNotEmpty()) {
+                groupDao.queryAll(accountId).forEach {
+                    if (it.id !in remoteGroupIds) super.deleteGroup(it, true)
+                }
             }
-            feedDao.queryAll(accountId).forEach {
-                if (it.id !in remoteFeedIds) super.deleteFeed(it, true)
+            if (remoteFeedIds.isNotEmpty()) {
+                feedDao.queryAll(accountId).forEach {
+                    if (it.id !in remoteFeedIds) super.deleteFeed(it, true)
+                }
             }
 
             Log.i(TAG, "sync completed in ${System.currentTimeMillis() - preTime}ms, " +

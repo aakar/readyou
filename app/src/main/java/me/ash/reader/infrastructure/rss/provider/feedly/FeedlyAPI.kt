@@ -110,13 +110,17 @@ private constructor(
         continuation: String? = null,
         newerThan: Long? = null,
     ): FeedlyDTO.StreamContents {
-        val encodedStreamId = URLEncoder.encode(streamId, "UTF-8")
+        // Use the ?streamId= query-parameter form to avoid %2F path-normalization issues in OkHttp.
+        // Continuation tokens may contain +/= characters so they must be URL-encoded too.
         val params =
-            mutableListOf("count" to count.toString()).apply {
-                continuation?.let { add("continuation" to it) }
+            mutableListOf(
+                "streamId" to URLEncoder.encode(streamId, "UTF-8"),
+                "count" to count.toString(),
+            ).apply {
+                continuation?.let { add("continuation" to URLEncoder.encode(it, "UTF-8")) }
                 newerThan?.let { add("newerThan" to it.toString()) }
             }
-        return getRequest("streams/$encodedStreamId/contents", params)
+        return getRequest("streams/contents", params)
     }
 
     suspend fun markEntriesAsRead(entryIds: List<String>) {
