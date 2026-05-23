@@ -25,6 +25,14 @@ jobs:
       - name: List APK outputs
         run: find app/build/outputs/apk -name "*.apk"
 
+      - name: Verify no zip files
+        run: |
+          if find app/build/outputs/apk -name "*.zip"; then
+            echo "ERROR: Zip files found in build outputs"
+            exit 1
+          fi
+          echo "No zip files found - proceeding with APK upload"
+
       - name: Create GitHub Release with APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
