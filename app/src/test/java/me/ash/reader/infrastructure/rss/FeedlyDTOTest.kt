@@ -256,7 +256,7 @@ class FeedlyDTOTest {
         val item = FeedlyDTO.StreamItem(
             id = "entry1", title = null, author = null, published = null,
             updated = null, unread = true, summary = null, content = null,
-            canonical = null, alternate = null, origin = null,
+            canonicalUrl = null, canonical = null, alternate = null, origin = null,
             tags = null, enclosure = null, visual = null, thumbnail = null,
         )
         assertFalse(item.tags?.any { it.id?.contains("global.saved") == true } == true)
