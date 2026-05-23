@@ -44,6 +44,13 @@ constructor(
                     NotificationManager.IMPORTANCE_DEFAULT,
                 )
             )
+            createNotificationChannel(
+                NotificationChannel(
+                    NotificationGroupName.AUTH_REQUIRED,
+                    context.getString(R.string.feedly_token_expired_notification_title),
+                    NotificationManager.IMPORTANCE_HIGH,
+                )
+            )
         }
 
     fun notify(feed: Feed, articles: List<Article>) {
@@ -110,5 +117,30 @@ constructor(
 
     fun notify(feedWithArticle: FeedWithArticle) {
         notify(feedWithArticle.feed, feedWithArticle.articles)
+    }
+
+    fun notifyFeedlyAuthRequired(accountId: Int) {
+        if (!notificationManager.areNotificationsEnabled()) return
+        notificationManager.notify(
+            "feedly_auth_$accountId".hashCode(),
+            NotificationCompat.Builder(context, NotificationGroupName.AUTH_REQUIRED)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(context.getString(R.string.feedly_token_expired_notification_title))
+                .setContentText(context.getString(R.string.feedly_token_expired_notification_body))
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(
+                    PendingIntent.getActivity(
+                        context,
+                        "feedly_auth_$accountId".hashCode(),
+                        Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            putExtra(ExtraName.ACCOUNT_ID, accountId)
+                        },
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    )
+                )
+                .build(),
+        )
     }
 }

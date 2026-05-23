@@ -4,6 +4,7 @@ import android.content.Context
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 import me.ash.reader.infrastructure.exception.FeedlyAPIException
+import me.ash.reader.infrastructure.exception.FeedlyTokenExpiredException
 import me.ash.reader.infrastructure.net.RetryConfig
 import me.ash.reader.infrastructure.net.withRetries
 import me.ash.reader.infrastructure.rss.provider.ProviderAPI
@@ -45,7 +46,7 @@ private constructor(
 
         val body = response.body.string()
         when (response.code) {
-            401 -> throw FeedlyAPIException("Unauthorized: Invalid access token")
+            401 -> throw FeedlyTokenExpiredException()
             403 -> throw FeedlyAPIException("Forbidden")
             !in 200..299 -> throw FeedlyAPIException("Error ${response.code}: $body")
         }
@@ -68,7 +69,7 @@ private constructor(
 
         val responseBody = response.body.string()
         when (response.code) {
-            401 -> throw FeedlyAPIException("Unauthorized: Invalid access token")
+            401 -> throw FeedlyTokenExpiredException()
             403 -> throw FeedlyAPIException("Forbidden")
             !in 200..299 -> throw FeedlyAPIException("Error ${response.code}: $responseBody")
         }
@@ -90,7 +91,7 @@ private constructor(
 
         val responseBody = response.body.string()
         when (response.code) {
-            401 -> throw FeedlyAPIException("Unauthorized: Invalid access token")
+            401 -> throw FeedlyTokenExpiredException()
             403 -> throw FeedlyAPIException("Forbidden")
             !in 200..299 -> throw FeedlyAPIException("Error ${response.code}: $responseBody")
         }

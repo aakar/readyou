@@ -41,6 +41,10 @@
         android:theme="@style/Theme.Reader"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".ui.page.settings.accounts.addition.FeedlyWebLoginActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Reader" />
+        <activity
             android:name=".ui.widget.WidgetConfigActivity"
             android:exported="false"
             android:theme="@style/Theme.Reader">
