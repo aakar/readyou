@@ -11,8 +11,8 @@ jobs:
                   distribution: temurin
                   java-version: 17
 
-            - uses: gradle/gradle-build-action@v2.4.2
-            - run: gradle assembleGithubRelease
+            - uses: gradle/actions/setup-gradle@v4
+            - run: ./gradlew assembleGithubRelease
 
             - uses: actions/upload-artifact@v4
               with:
