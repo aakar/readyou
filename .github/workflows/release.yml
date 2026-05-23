@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - "v*"
+      - "*-feedly"
 
 jobs:
   release:
@@ -22,22 +23,26 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleGithubRelease
 
-      - name: List APK outputs
-        run: find app/build/outputs/apk -name "*.apk"
-
-      - name: Verify no zip files
+      - name: Find APK file
+        id: find_apk
         run: |
-          if find app/build/outputs/apk -name "*.zip"; then
-            echo "ERROR: Zip files found in build outputs"
+          APK_PATH=$(find app/build/outputs/apk/github/release -name "*.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK file found"
             exit 1
           fi
-          echo "No zip files found - proceeding with APK upload"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
 
-      - name: Create GitHub Release with APK
+      - name: Delete existing release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            app/build/outputs/apk/github/release/*.apk \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
+          gh release delete-asset "${{ github.ref_name }}" "*.zip" --yes 2>/dev/null || true
+          gh release delete-asset "${{ github.ref_name }}" "*.tar.gz" --yes 2>/dev/null || true
+
+      - name: Upload APK to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" "${{ steps.find_apk.outputs.apk_path }}" --clobber
