@@ -29,6 +29,9 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
+                // Google blocks OAuth in embedded WebViews via user-agent detection.
+                // Spoofing a Chrome user agent bypasses the disallowed_useragent error.
+                userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
             }
             wv.addJavascriptInterface(TokenExtractor(), "ReadYouAndroid")
             wv.webViewClient = object : WebViewClient() {
