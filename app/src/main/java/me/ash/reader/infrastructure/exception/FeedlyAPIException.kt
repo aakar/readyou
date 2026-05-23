@@ -1,6 +1,6 @@
 package me.ash.reader.infrastructure.exception
 
-class FeedlyAPIException : BusinessException {
+open class FeedlyAPIException : BusinessException {
     constructor() : super()
     constructor(message: String) : super(message)
     constructor(message: String, cause: Throwable) : super(message, cause)
