@@ -255,6 +255,10 @@
     <string name="feedly_desc" translatable="false">feedly.com</string>
     <string name="feedly_access_token">Access Token</string>
     <string name="feedly_access_token_hint">Paste your Feedly developer access token</string>
+    <string name="feedly_sign_in">Sign in with Feedly</string>
+    <string name="feedly_reauthenticate">Re-authenticate</string>
+    <string name="feedly_token_expired_notification_title">Feedly sign-in required</string>
+    <string name="feedly_token_expired_notification_body">Your Feedly access has expired. Tap to re-authenticate.</string>
     <string name="inoreader_desc" translatable="false">inoreader.com</string>
     <string name="self_hosted">Self-hosted</string>
     <string name="fresh_rss_desc" translatable="false">freshrss.org</string>

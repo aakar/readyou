@@ -26,6 +26,7 @@ import me.ash.reader.infrastructure.di.DefaultDispatcher
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.di.MainDispatcher
 import me.ash.reader.infrastructure.exception.FeedlyAPIException
+import me.ash.reader.infrastructure.exception.FeedlyTokenExpiredException
 import me.ash.reader.infrastructure.html.Readability
 import me.ash.reader.infrastructure.rss.RssHelper
 import me.ash.reader.infrastructure.rss.provider.feedly.FeedlyAPI
@@ -401,6 +402,10 @@ constructor(
                 accountService.update(account.copy(updateAt = preDate))
             }
             ListenableWorker.Result.success()
+        } catch (e: FeedlyTokenExpiredException) {
+            Log.w(TAG, "sync aborted: access token expired for accountId=$accountId")
+            notificationHelper.notifyFeedlyAuthRequired(accountId)
+            ListenableWorker.Result.failure()
         } catch (e: Exception) {
             Log.e(TAG, "sync failed: ${e.message}", e)
             ListenableWorker.Result.failure()

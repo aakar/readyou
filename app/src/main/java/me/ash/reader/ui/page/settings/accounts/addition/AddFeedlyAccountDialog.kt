@@ -1,5 +1,9 @@
 package me.ash.reader.ui.page.settings.accounts.addition
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +59,17 @@ fun AddFeedlyAccountDialog(
 
     var accessToken by rememberSaveable { mutableStateOf("") }
 
+    val webLoginLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val token = result.data?.getStringExtra(FeedlyWebLoginActivity.EXTRA_ACCESS_TOKEN)
+            if (!token.isNullOrBlank()) {
+                accessToken = token
+            }
+        }
+    }
+
     RYDialog(
         modifier = Modifier.padding(horizontal = 44.dp),
         visible = uiState.addFeedlyAccountDialogVisible,
@@ -86,6 +102,19 @@ fun AddFeedlyAccountDialog(
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !accountUiState.isLoading,
+                    onClick = {
+                        focusManager.clearFocus()
+                        webLoginLauncher.launch(
+                            Intent(context, FeedlyWebLoginActivity::class.java)
+                        )
+                    },
+                ) {
+                    Text(stringResource(R.string.feedly_sign_in))
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 RYOutlineTextField(
                     modifier = Modifier.fillMaxWidth(),

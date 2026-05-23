@@ -1,5 +1,9 @@
 package me.ash.reader.ui.page.settings.accounts.connection
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import me.ash.reader.R
@@ -17,12 +22,14 @@ import me.ash.reader.ui.component.base.TextFieldDialog
 import me.ash.reader.ui.ext.mask
 import me.ash.reader.ui.page.settings.SettingItem
 import me.ash.reader.ui.page.settings.accounts.AccountViewModel
+import me.ash.reader.ui.page.settings.accounts.addition.FeedlyWebLoginActivity
 
 @Composable
 fun LazyItemScope.FeedlyConnection(
     account: Account,
     viewModel: AccountViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val securityKey by remember { derivedStateOf { FeedlySecurityKey(account.securityKey) } }
 
     var tokenMask by remember { mutableStateOf(securityKey.accessToken?.mask()) }
@@ -30,6 +37,25 @@ fun LazyItemScope.FeedlyConnection(
     var tokenDialogVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(securityKey.accessToken) { tokenMask = securityKey.accessToken?.mask() }
+
+    val webLoginLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val token = result.data?.getStringExtra(FeedlyWebLoginActivity.EXTRA_ACCESS_TOKEN)
+            if (!token.isNullOrBlank()) {
+                securityKey.accessToken = token
+                save(account, viewModel, securityKey)
+            }
+        }
+    }
+
+    SettingItem(
+        title = stringResource(R.string.feedly_reauthenticate),
+        onClick = {
+            webLoginLauncher.launch(Intent(context, FeedlyWebLoginActivity::class.java))
+        },
+    ) {}
 
     SettingItem(
         title = stringResource(R.string.feedly_access_token),
