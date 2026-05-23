@@ -1,7 +1,6 @@
 import java.io.FileInputStream
 import java.util.Properties
 import org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.android)
@@ -99,6 +98,10 @@ android {
                 "ReadYou-${defaultConfig.versionName}-${gitCommitHash}.apk"
         }
     }
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-opt-in=kotlin.RequiresOptIn"
+        jvmTarget = JavaVersion.VERSION_11.toString()
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -111,13 +114,6 @@ android {
     androidResources { generateLocaleConfig = true }
     composeCompiler { featureFlags = setOf(ComposeFeatureFlag.PausableComposition) }
     namespace = "me.ash.reader"
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    compilerOptions {
-        freeCompilerArgs.addAll("-opt-in=kotlin.RequiresOptIn")
-        jvmTarget.set(JvmTarget.JVM_11)
-    }
 }
 
 aboutLibraries { excludeFields = arrayOf("generated") }
