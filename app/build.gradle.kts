@@ -99,10 +99,6 @@ android {
                 "ReadYou-${defaultConfig.versionName}-${gitCommitHash}.apk"
         }
     }
-    compilerOptions {
-        freeCompilerArgs.addAll("-opt-in=kotlin.RequiresOptIn")
-        jvmTarget.set(JvmTarget.JVM_11)
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -115,6 +111,13 @@ android {
     androidResources { generateLocaleConfig = true }
     composeCompiler { featureFlags = setOf(ComposeFeatureFlag.PausableComposition) }
     namespace = "me.ash.reader"
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        freeCompilerArgs.addAll("-opt-in=kotlin.RequiresOptIn")
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
 }
 
 aboutLibraries { excludeFields = arrayOf("generated") }
