@@ -3,28 +3,29 @@ package me.ash.reader.ui.page.settings.accounts.addition
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
+import android.view.Gravity
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
+import androidx.activity.ComponentActivity
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import java.util.concurrent.atomic.AtomicBoolean
 
-class FeedlyWebLoginActivity : AppCompatActivity() {
+class FeedlyWebLoginActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_ACCESS_TOKEN = "feedly_access_token"
         private const val FEEDLY_HOME = "https://feedly.com"
-        private const val MENU_DONE = 1
 
         // Injected before any page script runs (when the feature is supported).
         // Hooks XHR and fetch so we capture the Authorization header no matter
@@ -91,13 +92,57 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val toolbar = Toolbar(this)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Sign in with Feedly"
+        val dp = resources.displayMetrics.density
 
-        webView = WebView(this).also { wv ->
-            wv.settings.apply {
+        // Title
+        val titleView = TextView(this).apply {
+            text = "Sign in with Feedly"
+            textSize = 18f
+            setTextColor(Color.BLACK)
+            gravity = Gravity.CENTER
+        }
+
+        // Close button (left)
+        val closeBtn = Button(this).apply {
+            text = "✕"
+            textSize = 16f
+            setOnClickListener { finish() }
+        }
+
+        // Done button (right)
+        val doneBtn = Button(this).apply {
+            text = "Done"
+            setOnClickListener { attemptTokenCapture() }
+        }
+
+        // Top bar
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 8, 8, 8)
+            addView(
+                closeBtn,
+                LinearLayout.LayoutParams(
+                    (48 * dp).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(
+                titleView,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            addView(
+                doneBtn,
+                LinearLayout.LayoutParams(
+                    (72 * dp).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+        }
+
+        webView = WebView(this).apply {
+            settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 databaseEnabled = true
@@ -109,12 +154,12 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
             // Without this, feedly.com's React bundle initialises its HTTP client
             // (capturing the original fetch reference) before onPageFinished fires.
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(wv, EARLY_HOOK_JS, setOf("*"))
+                WebViewCompat.addDocumentStartJavaScript(this, EARLY_HOOK_JS, setOf("*"))
             }
 
-            wv.addJavascriptInterface(TokenExtractor(), "ReadYouAndroid")
+            addJavascriptInterface(TokenExtractor(), "ReadYouAndroid")
 
-            wv.webViewClient = object : WebViewClient() {
+            webViewClient = object : WebViewClient() {
 
                 // Network-layer interception — catches Authorization headers without
                 // relying on JS timing. Note: not all WebView versions forward custom
@@ -143,14 +188,14 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                     request: WebResourceRequest,
                 ): Boolean = false
             }
-            wv.loadUrl(FEEDLY_HOME)
+            loadUrl(FEEDLY_HOME)
         }
 
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(
-                    toolbar,
+                    topBar,
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -164,38 +209,20 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
         )
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(Menu.NONE, MENU_DONE, Menu.NONE, "Done").apply {
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-        }
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
+    private fun attemptTokenCapture() {
+        // Read window.feedlyToken — feedly.com exposes this on the global scope
+        // once the user is signed in. evaluateJavascript callback runs on main thread.
+        webView.evaluateJavascript("(function(){ return window.feedlyToken || ''; })();") { result ->
+            val token = result?.trim('"') ?: ""
+            if (token.isBlank() || token == "null") {
+                Toast.makeText(
+                    this,
+                    "Please sign in to Feedly first, then tap Done",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } else {
+                deliverToken(token)
             }
-            MENU_DONE -> {
-                // Read window.feedlyToken — feedly.com exposes this on the global scope
-                // once the user is signed in. evaluateJavascript returns null/"null" if
-                // the property doesn't exist, so we strip JSON quotes and check for blank.
-                webView.evaluateJavascript("(function(){ return window.feedlyToken || ''; })();") { result ->
-                    val token = result?.trim('"') ?: ""
-                    if (token.isBlank() || token == "null") {
-                        Toast.makeText(
-                            this,
-                            "Please sign in to Feedly first, then tap Done",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    } else {
-                        deliverToken(token)
-                    }
-                }
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
         }
     }
 
