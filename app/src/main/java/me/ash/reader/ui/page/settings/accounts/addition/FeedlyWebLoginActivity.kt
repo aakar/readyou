@@ -82,19 +82,6 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                 };
             })();
         """.trimIndent()
-
-        // Reads window.feedlyToken — the access token feedly.com exposes on the global scope
-        // once the user is signed in. This is the most reliable extraction point.
-        private val READ_FEEDLY_TOKEN_JS = """
-            (function() {
-                var token = window.feedlyToken;
-                if (token && typeof token === 'string' && token.length > 20) {
-                    ReadYouAndroid.onAccessTokenFound(token);
-                } else {
-                    ReadYouAndroid.onTokenReadAttempted();
-                }
-            })();
-        """.trimIndent()
     }
 
     private lateinit var webView: WebView
@@ -149,11 +136,6 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                         view.evaluateJavascript(EARLY_HOOK_JS, null)
                     }
-                    // When the URL indicates the user is on the logged-in app shell,
-                    // auto-attempt to read window.feedlyToken.
-                    if (url.contains("feedly.com/i/") || url.contains("feedly.com/f/")) {
-                        view.evaluateJavascript(READ_FEEDLY_TOKEN_JS, null)
-                    }
                 }
 
                 override fun shouldOverrideUrlLoading(
@@ -196,7 +178,21 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                 true
             }
             MENU_DONE -> {
-                webView.evaluateJavascript(READ_FEEDLY_TOKEN_JS, null)
+                // Read window.feedlyToken — feedly.com exposes this on the global scope
+                // once the user is signed in. evaluateJavascript returns null/"null" if
+                // the property doesn't exist, so we strip JSON quotes and check for blank.
+                webView.evaluateJavascript("(function(){ return window.feedlyToken || ''; })();") { result ->
+                    val token = result?.trim('"') ?: ""
+                    if (token.isBlank() || token == "null") {
+                        Toast.makeText(
+                            this,
+                            "Please sign in to Feedly first, then tap Done",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        deliverToken(token)
+                    }
+                }
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -228,18 +224,6 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onAccessTokenFound(token: String) {
             deliverToken(token)
-        }
-
-        @JavascriptInterface
-        fun onTokenReadAttempted() {
-            // window.feedlyToken was not available — user may not be fully logged in yet.
-            runOnUiThread {
-                Toast.makeText(
-                    this@FeedlyWebLoginActivity,
-                    "Please sign in to Feedly first, then tap Done",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
         }
     }
 }
