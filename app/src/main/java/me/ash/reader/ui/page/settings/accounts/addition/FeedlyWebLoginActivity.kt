@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
 import android.view.MenuItem
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -11,6 +12,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.webkit.WebViewCompat
@@ -22,6 +24,7 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_ACCESS_TOKEN = "feedly_access_token"
         private const val FEEDLY_HOME = "https://feedly.com"
+        private const val MENU_DONE = 1
 
         // Injected before any page script runs (when the feature is supported).
         // Hooks XHR and fetch so we capture the Authorization header no matter
@@ -80,37 +83,16 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
             })();
         """.trimIndent()
 
-        // Scans localStorage for anything that looks like a Feedly OAuth token.
-        // Called after page navigation so we catch tokens stored at login time.
-        private val LOCALSTORAGE_SCAN_JS = """
+        // Reads window.feedlyToken — the access token feedly.com exposes on the global scope
+        // once the user is signed in. This is the most reliable extraction point.
+        private val READ_FEEDLY_TOKEN_JS = """
             (function() {
-                try {
-                    for (var i = 0; i < localStorage.length; i++) {
-                        var key = localStorage.key(i);
-                        var raw = localStorage.getItem(key);
-                        if (!raw) continue;
-                        // Try JSON first
-                        try {
-                            var obj = JSON.parse(raw);
-                            var candidates = [obj.access_token, obj.accessToken,
-                                              obj.token, obj.oauth_token];
-                            for (var j = 0; j < candidates.length; j++) {
-                                var t = candidates[j];
-                                if (t && typeof t === 'string' && t.length > 20) {
-                                    ReadYouAndroid.onAccessTokenFound(t);
-                                    return;
-                                }
-                            }
-                        } catch (e) {
-                            // raw string — heuristic: long token-shaped value
-                            if (raw.length > 30 && /^[A-Za-z0-9._\-]+${'$'}/.test(raw)) {
-                                ReadYouAndroid.onAccessTokenFound(raw);
-                                return;
-                            }
-                        }
-                    }
-                } catch (e) {}
-                return null;
+                var token = window.feedlyToken;
+                if (token && typeof token === 'string' && token.length > 20) {
+                    ReadYouAndroid.onAccessTokenFound(token);
+                } else {
+                    ReadYouAndroid.onTokenReadAttempted();
+                }
             })();
         """.trimIndent()
     }
@@ -125,6 +107,7 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
         val toolbar = Toolbar(this)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.title = "Sign in with Feedly"
 
         webView = WebView(this).also { wv ->
             wv.settings.apply {
@@ -166,8 +149,11 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
                     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                         view.evaluateJavascript(EARLY_HOOK_JS, null)
                     }
-                    // Scan localStorage — feedly.com stores the token there at login time.
-                    view.evaluateJavascript(LOCALSTORAGE_SCAN_JS, null)
+                    // When the URL indicates the user is on the logged-in app shell,
+                    // auto-attempt to read window.feedlyToken.
+                    if (url.contains("feedly.com/i/") || url.contains("feedly.com/f/")) {
+                        view.evaluateJavascript(READ_FEEDLY_TOKEN_JS, null)
+                    }
                 }
 
                 override fun shouldOverrideUrlLoading(
@@ -196,12 +182,25 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
         )
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            return true
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(Menu.NONE, MENU_DONE, Menu.NONE, "Done").apply {
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
-        return super.onOptionsItemSelected(item)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            android.R.id.home -> {
+                finish()
+                true
+            }
+            MENU_DONE -> {
+                webView.evaluateJavascript(READ_FEEDLY_TOKEN_JS, null)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -229,6 +228,18 @@ class FeedlyWebLoginActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onAccessTokenFound(token: String) {
             deliverToken(token)
+        }
+
+        @JavascriptInterface
+        fun onTokenReadAttempted() {
+            // window.feedlyToken was not available — user may not be fully logged in yet.
+            runOnUiThread {
+                Toast.makeText(
+                    this@FeedlyWebLoginActivity,
+                    "Please sign in to Feedly first, then tap Done",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
         }
     }
 }
