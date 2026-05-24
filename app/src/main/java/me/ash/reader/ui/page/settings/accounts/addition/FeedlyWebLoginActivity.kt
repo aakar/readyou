@@ -210,9 +210,55 @@ class FeedlyWebLoginActivity : ComponentActivity() {
     }
 
     private fun attemptTokenCapture() {
-        // Read window.feedlyToken — feedly.com exposes this on the global scope
-        // once the user is signed in. evaluateJavascript callback runs on main thread.
-        webView.evaluateJavascript("(function(){ return window.feedlyToken || ''; })();") { result ->
+        // Try multiple extraction paths in priority order:
+        //   1. window.feedlyToken — documented global property for web access token
+        //   2. Known feedly localStorage keys (targeted, not a broad heuristic)
+        //   3. Common feedly window objects
+        val js = """
+            (function() {
+                // 1. window.feedlyToken
+                if (window.feedlyToken && typeof window.feedlyToken === 'string' && window.feedlyToken.length > 20) {
+                    return window.feedlyToken;
+                }
+                // 2. Feedly-specific localStorage keys only
+                try {
+                    var lsKeys = [];
+                    for (var i = 0; i < localStorage.length; i++) { lsKeys.push(localStorage.key(i)); }
+                    for (var i = 0; i < lsKeys.length; i++) {
+                        var key = lsKeys[i];
+                        if (!key || key.toLowerCase().indexOf('feedly') === -1) continue;
+                        var raw = localStorage.getItem(key);
+                        if (!raw) continue;
+                        try {
+                            var obj = JSON.parse(raw);
+                            var candidates = [obj.feedlyToken, obj.access_token, obj.accessToken, obj.token,
+                                              obj.session && obj.session.feedlyToken,
+                                              obj.session && obj.session.accessToken];
+                            for (var j = 0; j < candidates.length; j++) {
+                                var t = candidates[j];
+                                if (t && typeof t === 'string' && t.length > 20) return t;
+                            }
+                        } catch(e) {}
+                    }
+                } catch(e) {}
+                // 3. Known feedly window objects
+                try {
+                    var srcs = [
+                        window.feedly && window.feedly.token,
+                        window.feedly && window.feedly.accessToken,
+                        window.FC && window.FC.token,
+                        window.FC && window.FC.accessToken
+                    ];
+                    for (var i = 0; i < srcs.length; i++) {
+                        var t = srcs[i];
+                        if (t && typeof t === 'string' && t.length > 20) return t;
+                    }
+                } catch(e) {}
+                return '';
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(js) { result ->
             val token = result?.trim('"') ?: ""
             if (token.isBlank() || token == "null") {
                 Toast.makeText(
