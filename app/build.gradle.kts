@@ -27,13 +27,15 @@ val keyProps = Properties()
 val releaseKeyPropsFile: File = rootProject.file("signature/keystore_release.properties")
 val debugKeyPropsFile: File = rootProject.file("signature/keystore.properties")
 
-
 if (releaseKeyPropsFile.exists()) {
     println("Loading keystore properties from ${releaseKeyPropsFile.absolutePath}")
     keyProps.load(FileInputStream(releaseKeyPropsFile))
 } else if (debugKeyPropsFile.exists()) {
     keyProps.load(FileInputStream(debugKeyPropsFile))
 }
+
+val hasSigningConfig = keyProps.isNotEmpty() &&
+    keyProps["storeFile"]?.let { rootProject.file(it as String).exists() } == true
 
 android {
     compileSdk = 36
@@ -71,12 +73,14 @@ android {
             applicationIdSuffix = ".google.play"
         }
     }
-    signingConfigs {
-        create("release") {
-            keyAlias = keyProps["keyAlias"] as String?
-            keyPassword = keyProps["keyPassword"] as String?
-            storeFile = keyProps["storeFile"]?.let { file(it as String) }
-            storePassword = keyProps["storePassword"] as String?
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keyProps["keyAlias"] as String?
+                keyPassword = keyProps["keyPassword"] as String?
+                storeFile = keyProps["storeFile"]?.let { file(it as String) }
+                storePassword = keyProps["storePassword"] as String?
+            }
         }
     }
     lint { disable.addAll(listOf("MissingTranslation", "ExtraTranslation")) }
@@ -88,9 +92,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("release")
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
-        all { signingConfig = signingConfigs.getByName("release") }
+        all {
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
     applicationVariants.all {
         outputs.all {
