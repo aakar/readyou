@@ -208,7 +208,12 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
                                         it.initData(key.accountId)
                                     },
                                 onBack = onBack,
-                                navigateToFeeds = { backStack.add(Route.Feeds) },
+                                navigateToFeeds = {
+                                    // Pop all entries above root to return to the existing Feeds
+                                    // composable. Adding a new Feeds entry would create a fresh
+                                    // instance that re-triggers any pending auth-error observers.
+                                    while (backStack.size > 1) backStack.removeLastOrNull()
+                                },
                             )
                         }
                     Route.AddAccounts ->
