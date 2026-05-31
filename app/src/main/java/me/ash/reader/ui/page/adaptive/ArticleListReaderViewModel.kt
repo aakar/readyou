@@ -294,7 +294,8 @@ constructor(
                         ?: rssService.get().findArticleById(articleId)!!)
 
             if (diffMapHolder.checkIfUnread(item)) {
-                diffMapHolder.updateDiff(item, isUnread = false)
+                val deferDbWrite = settingsProvider.settings.keepUnreadArticlesInList.value
+                diffMapHolder.updateDiff(item, isUnread = false, deferDbWrite = deferDbWrite)
             }
             item.run {
                 _readingUiState.update {

@@ -178,7 +178,7 @@ class DiffMapHolder @Inject constructor(
     }
 
     fun updateDiff(
-        vararg articleWithFeed: ArticleWithFeed, isUnread: Boolean? = null
+        vararg articleWithFeed: ArticleWithFeed, isUnread: Boolean? = null, deferDbWrite: Boolean = false
     ) {
         val appliedDiffs = articleWithFeed.mapNotNull {
             updateDiffInternal(it, isUnread)
@@ -188,9 +188,10 @@ class DiffMapHolder @Inject constructor(
                 appendDiffToSync(it)
             }
         }
-        // Eagerly commit to DB so Room's PagingSource invalidates and the unread list
-        // stays consistent (articles marked read disappear immediately).
-        if (appliedDiffs.isNotEmpty()) {
+        // When deferDbWrite is true the DB write is skipped here so Room's PagingSource does not
+        // invalidate immediately. The diff stays in diffMap for visual display and is flushed to
+        // DB the next time commitDiffsToDb() is called (e.g. on sync/refresh).
+        if (!deferDbWrite && appliedDiffs.isNotEmpty()) {
             applicationScope.launch(ioDispatcher) {
                 val markAsRead = appliedDiffs.filter { !it.isUnread }.map { it.articleId }.toSet()
                 val markAsUnread = appliedDiffs.filter { it.isUnread }.map { it.articleId }.toSet()
