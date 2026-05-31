@@ -3,6 +3,7 @@ package me.ash.reader.domain.service
 import android.content.Context
 import androidx.work.ListenableWorker
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Date
 import javax.inject.Inject
@@ -111,7 +112,11 @@ constructor(
             ListenableWorker.Result.success()
         }
             .onFailure { syncLogger.log(it) }
-            .getOrNull() ?: ListenableWorker.Result.retry()
+            .getOrElse { e ->
+                ListenableWorker.Result.failure(
+                    workDataOf(SyncWorker.KEY_ERROR_MESSAGE to (e.message ?: "Sync failed"))
+                )
+            }
     }
 
     private suspend fun syncFeed(feed: Feed, preDate: Date = Date()): FeedWithArticle {

@@ -188,6 +188,20 @@ class DiffMapHolder @Inject constructor(
                 appendDiffToSync(it)
             }
         }
+        // Eagerly commit to DB so Room's PagingSource invalidates and the unread list
+        // stays consistent (articles marked read disappear immediately).
+        if (appliedDiffs.isNotEmpty()) {
+            applicationScope.launch(ioDispatcher) {
+                val markAsRead = appliedDiffs.filter { !it.isUnread }.map { it.articleId }.toSet()
+                val markAsUnread = appliedDiffs.filter { it.isUnread }.map { it.articleId }.toSet()
+                if (markAsRead.isNotEmpty()) {
+                    rssService.get().batchMarkAsRead(articleIds = markAsRead, isUnread = false)
+                }
+                if (markAsUnread.isNotEmpty()) {
+                    rssService.get().batchMarkAsRead(articleIds = markAsUnread, isUnread = true)
+                }
+            }
+        }
     }
 
     private fun appendDiffToSync(diff: Diff) {
@@ -199,11 +213,18 @@ class DiffMapHolder @Inject constructor(
 
     fun commitDiffsToDb() {
         applicationScope.launch(ioDispatcher) {
-            val markAsReadArticles = diffMap.filter { !it.value.isUnread }.map { it.key }.toSet()
-            val markAsUnreadArticles = diffMap.filter { it.value.isUnread }.map { it.key }.toSet()
-            clearDiffs()
+            val snapshot = diffMap.toMap()
+            if (snapshot.isEmpty()) return@launch
+            // Remove only the snapshotted entries so diffs added after the snapshot are preserved.
+            snapshot.keys.forEach { diffMap.remove(it) }
+            // Write to DB before deleting cache so a crash between the two steps doesn't lose data.
+            val markAsReadArticles = snapshot.filter { !it.value.isUnread }.map { it.key }.toSet()
+            val markAsUnreadArticles = snapshot.filter { it.value.isUnread }.map { it.key }.toSet()
             rssService.get().batchMarkAsRead(articleIds = markAsReadArticles, isUnread = false)
             rssService.get().batchMarkAsRead(articleIds = markAsUnreadArticles, isUnread = true)
+            if (cacheFile.exists() && cacheFile.canWrite()) {
+                cacheFile.delete()
+            }
         }
     }
 
@@ -272,14 +293,6 @@ class DiffMapHolder @Inject constructor(
         }
     }
 
-    private fun clearDiffs() {
-        applicationScope.launch(ioDispatcher) {
-            if (cacheFile.exists() && cacheFile.canWrite()) {
-                cacheFile.delete()
-            }
-            diffMap.clear()
-        }
-    }
 }
 
 data class Diff(

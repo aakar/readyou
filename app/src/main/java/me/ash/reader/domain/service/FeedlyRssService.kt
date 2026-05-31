@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.compose.ui.util.fastFilter
 import androidx.work.ListenableWorker
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.rometools.rome.feed.synd.SyndFeed
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Date
@@ -405,10 +406,17 @@ constructor(
         } catch (e: FeedlyTokenExpiredException) {
             Log.w(TAG, "sync aborted: access token expired for accountId=$accountId")
             notificationHelper.notifyFeedlyAuthRequired(accountId)
-            ListenableWorker.Result.failure()
+            ListenableWorker.Result.failure(
+                workDataOf(
+                    SyncWorker.KEY_ERROR_TYPE to SyncWorker.ERROR_AUTH,
+                    SyncWorker.KEY_ACCOUNT_ID_OUT to accountId,
+                )
+            )
         } catch (e: Exception) {
             Log.e(TAG, "sync failed: ${e.message}", e)
-            ListenableWorker.Result.failure()
+            ListenableWorker.Result.failure(
+                workDataOf(SyncWorker.KEY_ERROR_MESSAGE to (e.message ?: "Sync failed"))
+            )
         }
     }
 

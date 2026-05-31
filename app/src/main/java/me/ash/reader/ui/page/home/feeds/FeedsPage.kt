@@ -58,9 +58,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.eventFlow
 import androidx.work.WorkInfo
+import java.util.UUID
 import kotlin.collections.set
 import kotlinx.coroutines.launch
 import me.ash.reader.R
+import me.ash.reader.domain.service.SyncWorker
+import me.ash.reader.ui.ext.showToast
 import me.ash.reader.infrastructure.preference.LocalFeedsFilterBarPadding
 import me.ash.reader.infrastructure.preference.LocalFeedsFilterBarStyle
 import me.ash.reader.infrastructure.preference.LocalFeedsFilterBarTonalElevation
@@ -141,6 +144,8 @@ fun FeedsPage(
         syncingScope.launch { feedsViewModel.sync() }
     }
 
+    val handledFailedIds = remember { mutableSetOf<UUID>() }
+
     DisposableEffect(owner) {
         scope.launch {
             owner.lifecycle.eventFlow.collect {
@@ -157,9 +162,27 @@ fun FeedsPage(
             }
         }
         feedsViewModel.syncWorkLiveData.observe(owner) { workInfoList ->
-            workInfoList.let {
-                isSyncing = it.any { workInfo -> workInfo.state == WorkInfo.State.RUNNING }
-            }
+            isSyncing = workInfoList.any { it.state == WorkInfo.State.RUNNING }
+
+            workInfoList
+                .filter {
+                    it.state == WorkInfo.State.FAILED &&
+                        it.id !in handledFailedIds &&
+                        it.tags.contains(SyncWorker.ONETIME_WORK_TAG)
+                }
+                .firstOrNull()
+                ?.let { failedWork ->
+                    handledFailedIds.add(failedWork.id)
+                    val errorType = failedWork.outputData.getString(SyncWorker.KEY_ERROR_TYPE)
+                    val accountId = failedWork.outputData.getInt(SyncWorker.KEY_ACCOUNT_ID_OUT, -1)
+                    if (errorType == SyncWorker.ERROR_AUTH && accountId != -1) {
+                        navigateToAccountDetail(accountId)
+                    } else {
+                        val message = failedWork.outputData.getString(SyncWorker.KEY_ERROR_MESSAGE)
+                            ?: context.getString(R.string.sync_failed)
+                        context.showToast(message)
+                    }
+                }
         }
         onDispose { feedsViewModel.syncWorkLiveData.removeObservers(owner) }
     }

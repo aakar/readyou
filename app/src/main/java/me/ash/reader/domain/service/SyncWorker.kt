@@ -66,6 +66,11 @@ constructor(
         const val ONETIME_WORK_TAG = "ONETIME_WORK_TAG"
         const val PERIODIC_WORK_TAG = "PERIODIC_WORK_TAG"
 
+        const val KEY_ERROR_TYPE = "error_type"
+        const val KEY_ACCOUNT_ID_OUT = "out_account_id"
+        const val KEY_ERROR_MESSAGE = "error_message"
+        const val ERROR_AUTH = "auth_required"
+
         fun cancelOneTimeWork(workManager: WorkManager) {
             workManager.cancelUniqueWork(SYNC_ONETIME_NAME)
         }
