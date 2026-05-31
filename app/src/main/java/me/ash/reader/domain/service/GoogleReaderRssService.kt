@@ -6,6 +6,7 @@ import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastFilteredMap
 import androidx.work.ListenableWorker
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.rometools.rome.feed.synd.SyndFeed
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Calendar
@@ -225,10 +226,27 @@ constructor(
         feedId: String?,
         groupId: String?,
     ): ListenableWorker.Result {
-        return if (feedId != null) {
-            syncFeed(accountId, feedId)
-        } else {
-            sync(accountId)
+        return try {
+            if (feedId != null) {
+                syncFeed(accountId, feedId)
+            } else {
+                sync(accountId)
+            }
+        } catch (e: Exception) {
+            syncLogger.log(e)
+            val isAuthError = e.message?.contains("Unauthorized", ignoreCase = true) == true
+            if (isAuthError) {
+                ListenableWorker.Result.failure(
+                    workDataOf(
+                        SyncWorker.KEY_ERROR_TYPE to SyncWorker.ERROR_AUTH,
+                        SyncWorker.KEY_ACCOUNT_ID_OUT to accountId,
+                    )
+                )
+            } else {
+                ListenableWorker.Result.failure(
+                    workDataOf(SyncWorker.KEY_ERROR_MESSAGE to (e.message ?: "Sync failed"))
+                )
+            }
         }
     }
 

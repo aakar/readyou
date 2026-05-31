@@ -255,6 +255,7 @@
     <string name="feedly_desc" translatable="false">feedly.com</string>
     <string name="feedly_access_token">Access Token</string>
     <string name="feedly_access_token_hint">Paste your Feedly developer access token</string>
+    <string name="sync_failed">Sync failed</string>
     <string name="feedly_sign_in">Sign in with Feedly</string>
     <string name="feedly_reauthenticate">Re-authenticate</string>
     <string name="feedly_token_expired_notification_title">Feedly sign-in required</string>
