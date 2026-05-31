@@ -354,6 +354,8 @@
     <string name="only_available_on_webview">Only available when using the WebView content renderer</string>
     <string name="about">About</string>
     <string name="mark_as_read_on_scroll">Mark as read on scroll</string>
+    <string name="keep_unread_articles_in_list">Keep read articles in unread list</string>
+    <string name="keep_unread_articles_in_list_desc">Opened articles stay in the list until you refresh</string>
     <string name="hide_empty_groups">Hide empty groups</string>
     <string name="become_a_sponsor">Become a sponsor</string>
     <string name="sponsor_desc">We build and maintain this free, open source app in our free time. If you enjoy it, please consider supporting us with a small donation! ☕️</string>

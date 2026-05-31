@@ -73,6 +73,7 @@ data class Settings(
     val swipeStartAction: SwipeStartActionPreference = SwipeStartActionPreference.default,
     val swipeEndAction: SwipeEndActionPreference = SwipeEndActionPreference.default,
     val markAsReadOnScroll: MarkAsReadOnScrollPreference = MarkAsReadOnScrollPreference.default,
+    val keepUnreadArticlesInList: KeepUnreadArticlesInListPreference = KeepUnreadArticlesInListPreference.default,
     val hideEmptyGroups: HideEmptyGroupsPreference = HideEmptyGroupsPreference.default,
     val pullToSwitchFeed: PullToLoadNextFeedPreference = PullToLoadNextFeedPreference.default,
     val pullToSwitchArticle: PullToSwitchArticlePreference = PullToSwitchArticlePreference.default,
