@@ -29,10 +29,15 @@ class WebViewClient(
         val url = request?.url?.toString()
         if (url != null && url.contains(INJECTION_TOKEN)) {
             try {
-                val assetPath = url.substring(
+                val raw = url.substring(
                     url.indexOf(INJECTION_TOKEN) + INJECTION_TOKEN.length,
                     url.length
                 )
+                // Reject paths that escape the assets directory via traversal sequences.
+                val assetPath = raw.removePrefix("/")
+                if (assetPath.contains("..") || assetPath.startsWith("/")) {
+                    return null
+                }
                 return WebResourceResponse(
                     "text/HTML",
                     "UTF-8",
