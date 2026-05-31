@@ -58,7 +58,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.eventFlow
 import androidx.work.WorkInfo
-import java.util.UUID
 import kotlin.collections.set
 import kotlinx.coroutines.launch
 import me.ash.reader.R
@@ -144,8 +143,6 @@ fun FeedsPage(
         syncingScope.launch { feedsViewModel.sync() }
     }
 
-    val handledFailedIds = remember { mutableSetOf<UUID>() }
-
     DisposableEffect(owner) {
         scope.launch {
             owner.lifecycle.eventFlow.collect {
@@ -167,12 +164,12 @@ fun FeedsPage(
             workInfoList
                 .filter {
                     it.state == WorkInfo.State.FAILED &&
-                        it.id !in handledFailedIds &&
+                        it.id !in feedsViewModel.handledFailedSyncIds &&
                         it.tags.contains(SyncWorker.ONETIME_WORK_TAG)
                 }
                 .firstOrNull()
                 ?.let { failedWork ->
-                    handledFailedIds.add(failedWork.id)
+                    feedsViewModel.handledFailedSyncIds.add(failedWork.id)
                     val errorType = failedWork.outputData.getString(SyncWorker.KEY_ERROR_TYPE)
                     val accountId = failedWork.outputData.getInt(SyncWorker.KEY_ACCOUNT_ID_OUT, -1)
                     if (errorType == SyncWorker.ERROR_AUTH && accountId != -1) {

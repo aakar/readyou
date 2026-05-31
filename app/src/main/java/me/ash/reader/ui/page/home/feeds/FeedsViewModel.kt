@@ -36,6 +36,7 @@ import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.DefaultDispatcher
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.preference.SettingsProvider
+import java.util.UUID
 import javax.inject.Inject
 
 private const val TAG = "FeedsViewModel"
@@ -64,6 +65,10 @@ class FeedsViewModel @Inject constructor(
     val feedsUiState: StateFlow<FeedsUiState> = _feedsUiState.asStateFlow()
 
     val syncWorkLiveData = workManager.getWorkInfosByTagLiveData(SyncWorker.SYNC_TAG)
+
+    // Persists across recomposition so the auth-error observer on FeedsPage doesn't
+    // re-trigger for the same failed work when returning from AccountDetailsPage.
+    val handledFailedSyncIds = mutableSetOf<UUID>()
 
     val filterStateFlow = filterStateUseCase.filterStateFlow
     val groupWithFeedsListFlow = groupWithFeedsListUseCase.groupWithFeedListFlow
