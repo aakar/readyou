@@ -425,6 +425,46 @@ constructor(
                 Log.i(TAG, "markers/reads applied to DB")
             }
 
+            // Sync saved/starred articles from global.saved stream. The stream fetch above only
+            // returns items newer than newerThan, so articles starred before that window (e.g.
+            // starred on another device) would never be picked up without this separate fetch.
+            val savedStreamId = "user/$userId/tag/global.saved"
+            val remoteStarredIds = mutableSetOf<String>()
+            var savedContinuation: String? = null
+            var savedBatchCount = 0
+            val savedResult = runCatching {
+                while (savedBatchCount < 20) {
+                    val savedStream = feedlyAPI.getStreamContents(
+                        streamId = savedStreamId,
+                        count = 250,
+                        continuation = savedContinuation,
+                        newerThan = null,
+                    )
+                    val items = savedStream.items
+                    if (items.isNullOrEmpty()) break
+                    items.forEach { item -> item.id?.let { remoteStarredIds.add(accountId.spacerDollar(it)) } }
+                    savedContinuation = savedStream.continuation ?: break
+                    savedBatchCount++
+                }
+            }
+            savedResult.onFailure { e -> Log.e(TAG, "global.saved stream fetch failed: ${e.message}", e) }
+            if (savedResult.isSuccess) {
+                Log.i(TAG, "global.saved: ${remoteStarredIds.size} entries across $savedBatchCount batches")
+                if (remoteStarredIds.isNotEmpty()) {
+                    remoteStarredIds.chunked(500).forEach { chunk ->
+                        articleDao.markAsStarredByIdSet(accountId, chunk.toSet(), isStarred = true)
+                    }
+                }
+                val localStarredIds = articleDao.queryStarredIds(accountId).toSet()
+                val toUnstar = localStarredIds - remoteStarredIds
+                if (toUnstar.isNotEmpty()) {
+                    Log.i(TAG, "unstarring ${toUnstar.size} articles removed from global.saved")
+                    toUnstar.chunked(500).forEach { chunk ->
+                        articleDao.markAsStarredByIdSet(accountId, chunk.toSet(), isStarred = false)
+                    }
+                }
+            }
+
             // 5. Remove orphaned groups and feeds (only if remote lists are non-empty,
             //    to avoid accidentally wiping everything if an API call returned nothing)
             if (remoteGroupIds.isNotEmpty()) {
