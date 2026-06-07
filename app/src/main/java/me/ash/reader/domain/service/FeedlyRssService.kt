@@ -381,6 +381,50 @@ constructor(
                     .forEach { (feed, articles) -> notificationHelper.notify(feed, articles) }
             }
 
+            // Fetch Feedly's read markers without a newerThan filter so we get the full recent
+            // window (~30 days). This catches articles read on other devices/clients that are older
+            // than newerThan and thus not returned by the stream, including historical mismatches
+            // from previous broken syncs. Applied after stream insert so the stream's authoritative
+            // isUnread values for new articles are not overwritten.
+            val markersResult = runCatching { feedlyAPI.getMarkersReads() }
+            markersResult.onFailure { e ->
+                Log.e(TAG, "markers/reads fetch failed: ${e.message}", e)
+            }
+            val markersReads = markersResult.getOrNull()
+            if (markersReads != null) {
+                val remoteReadEntryIds = markersReads.entries.orEmpty()
+                Log.i(TAG, "markers/reads: ${remoteReadEntryIds.size} entries, " +
+                        "${markersReads.feeds.orEmpty().size} feeds, " +
+                        "${markersReads.categories.orEmpty().size} categories")
+                if (remoteReadEntryIds.isNotEmpty()) {
+                    val localReadIds = remoteReadEntryIds.map { accountId.spacerDollar(it) }.toSet()
+                    localReadIds.chunked(500).forEach { chunk ->
+                        articleDao.markAsReadByIdSet(accountId, chunk.toSet(), isUnread = false)
+                    }
+                }
+                markersReads.feeds.orEmpty().forEach { feedRead ->
+                    val feedId = feedRead.id ?: return@forEach
+                    val asOf = feedRead.asOf ?: return@forEach
+                    articleDao.markAllAsReadByFeedId(
+                        accountId = accountId,
+                        feedId = accountId.spacerDollar(feedId),
+                        isUnread = false,
+                        before = Date(asOf),
+                    )
+                }
+                markersReads.categories.orEmpty().forEach { categoryRead ->
+                    val categoryId = categoryRead.id ?: return@forEach
+                    val asOf = categoryRead.asOf ?: return@forEach
+                    articleDao.markAllAsReadByGroupId(
+                        accountId = accountId,
+                        groupId = accountId.spacerDollar(categoryId),
+                        isUnread = false,
+                        before = Date(asOf),
+                    )
+                }
+                Log.i(TAG, "markers/reads applied to DB")
+            }
+
             // 5. Remove orphaned groups and feeds (only if remote lists are non-empty,
             //    to avoid accidentally wiping everything if an API call returned nothing)
             if (remoteGroupIds.isNotEmpty()) {
