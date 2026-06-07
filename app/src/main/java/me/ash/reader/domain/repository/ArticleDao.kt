@@ -23,7 +23,7 @@ interface ArticleDao {
 
     @Query(
         """
-        UPDATE article SET isStarred = :isStarred 
+        UPDATE article SET isStarred = :isStarred
         WHERE accountId = :accountId
         AND id in (:ids)
         """
@@ -33,6 +33,9 @@ interface ArticleDao {
         ids: Set<String>,
         isStarred: Boolean,
     ): Int
+
+    @Query("SELECT id FROM article WHERE accountId = :accountId AND isStarred = 1")
+    suspend fun queryStarredIds(accountId: Int): List<String>
 
     @Query(
         """
