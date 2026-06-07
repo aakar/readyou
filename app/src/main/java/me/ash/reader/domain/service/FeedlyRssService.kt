@@ -369,10 +369,6 @@ constructor(
 
             Log.i(TAG, "stream fetch done: ${allArticles.size} articles across $batchCount batches")
 
-            // Fetch read markers since last sync in parallel with DB work below.
-            // Applied after insert so the stream's authoritative isUnread values are not overwritten.
-            val markersReads = runCatching { feedlyAPI.getMarkersReads(newerThan) }.getOrNull()
-
             if (allArticles.isNotEmpty()) {
                 articleDao.insert(*allArticles.toTypedArray())
                 val notificationFeeds =
@@ -385,10 +381,21 @@ constructor(
                     .forEach { (feed, articles) -> notificationHelper.notify(feed, articles) }
             }
 
-            // Apply remote read markers to update articles that were read on other devices/clients
-            // since the last sync but are older than newerThan (not returned in the stream).
+            // Fetch Feedly's read markers without a newerThan filter so we get the full recent
+            // window (~30 days). This catches articles read on other devices/clients that are older
+            // than newerThan and thus not returned by the stream, including historical mismatches
+            // from previous broken syncs. Applied after stream insert so the stream's authoritative
+            // isUnread values for new articles are not overwritten.
+            val markersResult = runCatching { feedlyAPI.getMarkersReads() }
+            markersResult.onFailure { e ->
+                Log.e(TAG, "markers/reads fetch failed: ${e.message}", e)
+            }
+            val markersReads = markersResult.getOrNull()
             if (markersReads != null) {
                 val remoteReadEntryIds = markersReads.entries.orEmpty()
+                Log.i(TAG, "markers/reads: ${remoteReadEntryIds.size} entries, " +
+                        "${markersReads.feeds.orEmpty().size} feeds, " +
+                        "${markersReads.categories.orEmpty().size} categories")
                 if (remoteReadEntryIds.isNotEmpty()) {
                     val localReadIds = remoteReadEntryIds.map { accountId.spacerDollar(it) }.toSet()
                     localReadIds.chunked(500).forEach { chunk ->
@@ -415,9 +422,7 @@ constructor(
                         before = Date(asOf),
                     )
                 }
-                Log.i(TAG, "markers/reads applied: ${remoteReadEntryIds.size} entries, " +
-                        "${markersReads.feeds.orEmpty().size} feeds, " +
-                        "${markersReads.categories.orEmpty().size} categories")
+                Log.i(TAG, "markers/reads applied to DB")
             }
 
             // 5. Remove orphaned groups and feeds (only if remote lists are non-empty,
