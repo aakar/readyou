@@ -124,6 +124,11 @@ private constructor(
         return getRequest("streams/contents", params)
     }
 
+    suspend fun getMarkersReads(newerThan: Long? = null): FeedlyDTO.MarkersReads {
+        val params = newerThan?.let { listOf("newerThan" to it.toString()) }
+        return getRequest("markers/reads", params)
+    }
+
     suspend fun markEntriesAsRead(entryIds: List<String>) {
         if (entryIds.isEmpty()) return
         withRetries(retryConfig) {

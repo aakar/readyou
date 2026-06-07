@@ -369,6 +369,10 @@ constructor(
 
             Log.i(TAG, "stream fetch done: ${allArticles.size} articles across $batchCount batches")
 
+            // Fetch read markers since last sync in parallel with DB work below.
+            // Applied after insert so the stream's authoritative isUnread values are not overwritten.
+            val markersReads = runCatching { feedlyAPI.getMarkersReads(newerThan) }.getOrNull()
+
             if (allArticles.isNotEmpty()) {
                 articleDao.insert(*allArticles.toTypedArray())
                 val notificationFeeds =
@@ -379,6 +383,41 @@ constructor(
                     .groupBy { it.feedId }
                     .mapKeys { (feedId, _) -> notificationFeeds[feedId]!! }
                     .forEach { (feed, articles) -> notificationHelper.notify(feed, articles) }
+            }
+
+            // Apply remote read markers to update articles that were read on other devices/clients
+            // since the last sync but are older than newerThan (not returned in the stream).
+            if (markersReads != null) {
+                val remoteReadEntryIds = markersReads.entries.orEmpty()
+                if (remoteReadEntryIds.isNotEmpty()) {
+                    val localReadIds = remoteReadEntryIds.map { accountId.spacerDollar(it) }.toSet()
+                    localReadIds.chunked(500).forEach { chunk ->
+                        articleDao.markAsReadByIdSet(accountId, chunk.toSet(), isUnread = false)
+                    }
+                }
+                markersReads.feeds.orEmpty().forEach { feedRead ->
+                    val feedId = feedRead.id ?: return@forEach
+                    val asOf = feedRead.asOf ?: return@forEach
+                    articleDao.markAllAsReadByFeedId(
+                        accountId = accountId,
+                        feedId = accountId.spacerDollar(feedId),
+                        isUnread = false,
+                        before = Date(asOf),
+                    )
+                }
+                markersReads.categories.orEmpty().forEach { categoryRead ->
+                    val categoryId = categoryRead.id ?: return@forEach
+                    val asOf = categoryRead.asOf ?: return@forEach
+                    articleDao.markAllAsReadByGroupId(
+                        accountId = accountId,
+                        groupId = accountId.spacerDollar(categoryId),
+                        isUnread = false,
+                        before = Date(asOf),
+                    )
+                }
+                Log.i(TAG, "markers/reads applied: ${remoteReadEntryIds.size} entries, " +
+                        "${markersReads.feeds.orEmpty().size} feeds, " +
+                        "${markersReads.categories.orEmpty().size} categories")
             }
 
             // 5. Remove orphaned groups and feeds (only if remote lists are non-empty,

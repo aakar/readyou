@@ -35,7 +35,7 @@ sealed class KeepUnreadArticlesInListPreference(val value: Boolean) : Preference
 
     companion object {
 
-        val default = OFF
+        val default = ON
         val values = listOf(ON, OFF)
 
         fun fromPreferences(preferences: Preferences) =

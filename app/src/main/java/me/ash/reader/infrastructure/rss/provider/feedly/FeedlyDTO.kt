@@ -93,4 +93,21 @@ object FeedlyDTO {
         val categoryIds: List<String>? = null,
         val asOf: Long? = null,
     )
+
+    data class FeedRead(
+        val id: String?,
+        val asOf: Long?,
+    )
+
+    data class CategoryRead(
+        val id: String?,
+        val asOf: Long?,
+    )
+
+    data class MarkersReads(
+        val updated: Long?,
+        val entries: List<String>?,
+        val feeds: List<FeedRead>?,
+        val categories: List<CategoryRead>?,
+    )
 }
